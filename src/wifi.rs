@@ -10,14 +10,14 @@ use heapless::String;
 use log::info;
 
 pub fn connect_to_wifi(
-    ssid: &str,
-    pwd: &str,
+    ssid: String<32>,
+    pwd: String<64>,
     modem: impl Peripheral<P = Modem> + 'static,
     sysloop: EspSystemEventLoop,
 ) -> Result<Box<EspWifi<'static>>> {
     info!("Starting wifi connection process");
 
-    check_credentials_not_empty(ssid, pwd)?;
+    check_credentials_not_empty(ssid.clone(), pwd.clone())?;
 
     let nvs = EspDefaultNvsPartition::take()?;
     let mut esp_wifi = EspWifi::new(modem, sysloop.clone(), Some(nvs))?;
@@ -49,8 +49,8 @@ pub fn connect_to_wifi(
 
     wifi.set_configuration(&Configuration::Mixed(
         ClientConfiguration {
-            ssid: String::<32>::try_from(ssid).unwrap(),
-            password: String::<64>::try_from(pwd).unwrap(),
+            ssid: ssid,
+            password: pwd,
             channel,
             auth_method: AuthMethod::WPA2Personal,
             ..Default::default()
@@ -74,7 +74,7 @@ pub fn connect_to_wifi(
     Ok(Box::new(esp_wifi))
 }
 
-fn check_credentials_not_empty(ssid: &str, pwd: &str) -> Result<()> {
+fn check_credentials_not_empty(ssid: String<32>, pwd: String<64>) -> Result<()> {
     if ssid.is_empty() {
         bail!("Missing WiFi name");
     }
