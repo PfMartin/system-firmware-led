@@ -40,6 +40,7 @@ smart-leds = "0.3.0"
 ws2812-esp32-rmt-driver = "0.6.0"
 heapless = "0.8.0"
 rand = "0.8"
+paho-mqtt = "0.12.5"
 
 
 [build-dependencies]

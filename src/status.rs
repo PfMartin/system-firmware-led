@@ -1,4 +1,7 @@
-type RgbColor = (u8, u8, u8);
+use anyhow::Result;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::led::RgbColor;
 
 pub struct Status {
     pub last_changed: u64,
@@ -15,8 +18,14 @@ impl Status {
         };
     }
 
-    pub fn set_new_status(&mut self, new_color: RgbColor) {
+    pub fn set_new_status(&mut self, new_color: RgbColor) -> Result<()> {
+        let now = SystemTime::now();
+        let duration_since_epoch = now.duration_since(UNIX_EPOCH)?;
+
+        self.last_changed = duration_since_epoch.as_secs();
         self.last_color = self.current_color;
         self.current_color = new_color;
+
+        Ok(())
     }
 }
