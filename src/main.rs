@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use esp_idf_hal::prelude::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use heapless::String;
@@ -51,18 +51,22 @@ fn main() -> Result<()> {
     let status = Status::new();
     let status_mutex = Arc::new(Mutex::new(status));
 
+    let mut thread_handles = vec![];
+
     let mutex_clone = Arc::clone(&status_mutex);
-    let status_publish_handle = thread::spawn(move || loop {
-        sleep(Duration::from_millis(2000));
-        let s = mutex_clone.lock().unwrap();
-        info!(
-            "Current status: last_changed: {:?}, current_color: {:?}, last_color: {:?}",
-            s.last_changed, s.current_color, s.last_color
-        );
-    });
+    thread_handles.push(thread::spawn(move || -> Result<()> {
+        loop {
+            sleep(Duration::from_millis(2000));
+            let s = mutex_clone.lock().unwrap();
+            info!(
+                "Current status: last_changed: {:?}, current_color: {:?}, last_color: {:?}",
+                s.last_changed, s.current_color, s.last_color
+            );
+        }
+    }));
 
     let subscription_mutex = Arc::clone(&status_mutex);
-    let subscription_handle = thread::spawn(move || loop {
+    thread_handles.push(thread::spawn(move || loop {
         sleep(Duration::from_millis(2000));
         info!("Waiting for messages...");
         let mut rng = rand::thread_rng();
@@ -79,11 +83,14 @@ fn main() -> Result<()> {
             0,
             app_config.indicator_led_gpio,
         )
-        .unwrap();
-    });
+        .with_context(|| format!("Failed to set led color"))?;
+    }));
 
-    let _ = status_publish_handle.join();
-    let _ = subscription_handle.join();
+    for handle in thread_handles {
+        let _ = handle
+            .join()
+            .map_err(|e| anyhow!("Thread panicked: {:?}", e))?;
+    }
 
     Ok(())
 }
