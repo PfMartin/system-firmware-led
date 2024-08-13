@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::led::RgbColor;
+use crate::led_control::RgbColor;
 
 pub struct Status {
     pub last_changed: u64,

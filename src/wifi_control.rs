@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use embedded_svc::wifi::{
     AccessPointConfiguration, AuthMethod, ClientConfiguration, Configuration,
 };
@@ -10,14 +10,14 @@ use heapless::String;
 use log::info;
 
 pub fn connect_to_wifi(
-    ssid: String<32>,
-    pwd: String<64>,
+    ssid: &'static str,
+    pwd: &'static str,
     modem: impl Peripheral<P = Modem> + 'static,
     sysloop: EspSystemEventLoop,
 ) -> Result<Box<EspWifi<'static>>> {
     info!("Starting wifi connection process");
 
-    check_credentials_not_empty(ssid.clone(), pwd.clone())?;
+    check_credentials_not_empty(ssid, pwd)?;
 
     let nvs = EspDefaultNvsPartition::take()?;
     let mut esp_wifi = EspWifi::new(modem, sysloop.clone(), Some(nvs))?;
@@ -47,10 +47,13 @@ pub fn connect_to_wifi(
         None
     };
 
+    let wifi_ssid = String::<32>::try_from(ssid).map_err(|e| anyhow!("Error: {:?}", e))?;
+    let wifi_psk = String::<64>::try_from(pwd).map_err(|e| anyhow!("Error: {:?}", e))?;
+
     wifi.set_configuration(&Configuration::Mixed(
         ClientConfiguration {
-            ssid: ssid,
-            password: pwd,
+            ssid: wifi_ssid,
+            password: wifi_psk,
             channel,
             auth_method: AuthMethod::WPA2Personal,
             ..Default::default()
@@ -74,7 +77,7 @@ pub fn connect_to_wifi(
     Ok(Box::new(esp_wifi))
 }
 
-fn check_credentials_not_empty(ssid: String<32>, pwd: String<64>) -> Result<()> {
+fn check_credentials_not_empty(ssid: &'static str, pwd: &'static str) -> Result<()> {
     if ssid.is_empty() {
         bail!("Missing WiFi name");
     }

@@ -5,8 +5,7 @@ use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
     mqtt::client::{EspMqttClient, MqttClientConfiguration},
 };
-use heapless::String;
-use led::{set_led_color, RgbColor};
+use led_control::{set_led_color, RgbColor};
 use log::info;
 use rand::Rng;
 use status::Status;
@@ -15,11 +14,11 @@ use std::{
     thread,
 };
 use std::{thread::sleep, time::Duration};
-use wifi::connect_to_wifi;
+use wifi_control::connect_to_wifi;
 
-mod led;
+mod led_control;
 mod status;
-mod wifi;
+mod wifi_control;
 
 #[toml_cfg::toml_config]
 pub struct Config {
@@ -48,22 +47,17 @@ fn main() -> Result<()> {
 
     let app_config = CONFIG;
 
-    let _ = set_led_color(LED_STRIP_INITIAL_COLOR, 1, app_config.led_strip_gpio)?;
-    let _ = set_led_color(
-        INDICATOR_LED_INITIAL_COLOR,
-        0,
-        app_config.indicator_led_gpio,
-    )?;
+    initialize_leds(app_config.led_strip_gpio, app_config.indicator_led_gpio)?;
 
     let peripherals = Peripherals::take()?;
     let sysloop = EspSystemEventLoop::take()?;
 
-    let wifi_ssid =
-        String::<32>::try_from(app_config.wifi_ssid).map_err(|e| anyhow!("Error: {:?}", e))?;
-    let wifi_psk =
-        String::<64>::try_from(app_config.wifi_psk).map_err(|e| anyhow!("Error: {:?}", e))?;
-
-    let _wifi_connection = connect_to_wifi(wifi_ssid, wifi_psk, peripherals.modem, sysloop)?;
+    let _wifi_connection = connect_to_wifi(
+        app_config.wifi_ssid,
+        app_config.wifi_psk,
+        peripherals.modem,
+        sysloop,
+    )?;
 
     let (client, mut connection) = EspMqttClient::new(
         &app_config.mqtt_broker_address,
@@ -127,6 +121,13 @@ fn main() -> Result<()> {
             .join()
             .map_err(|e| anyhow!("Thread panicked: {:?}", e))?;
     }
+
+    Ok(())
+}
+
+fn initialize_leds(led_strip_gpio: u32, inidicator_led_gpio: u32) -> Result<()> {
+    let _ = set_led_color(LED_STRIP_INITIAL_COLOR, 1, led_strip_gpio)?;
+    let _ = set_led_color(INDICATOR_LED_INITIAL_COLOR, 0, inidicator_led_gpio)?;
 
     Ok(())
 }
