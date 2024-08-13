@@ -1,10 +1,13 @@
 use anyhow::{anyhow, Context, Result};
+use embedded_svc::mqtt::client::QoS;
 use esp_idf_hal::prelude::Peripherals;
-use esp_idf_svc::eventloop::EspSystemEventLoop;
+use esp_idf_svc::{
+    eventloop::EspSystemEventLoop,
+    mqtt::client::{EspMqttClient, MqttClientConfiguration},
+};
 use heapless::String;
 use led::{set_led_color, RgbColor};
 use log::info;
-use paho_mqtt as mqtt;
 use rand::Rng;
 use status::Status;
 use std::{
@@ -28,7 +31,7 @@ pub struct Config {
     led_strip_gpio: u32,
     #[default(8)]
     indicator_led_gpio: u32,
-    #[default("tcp://localhost:1883")]
+    #[default("mqtt://localhost:1883")]
     mqtt_broker_address: &'static str,
     #[default("status/led-office")]
     mqtt_publish_topic: &'static str,
@@ -62,21 +65,33 @@ fn main() -> Result<()> {
 
     let _wifi_connection = connect_to_wifi(wifi_ssid, wifi_psk, peripherals.modem, sysloop)?;
 
-    let mut client = mqtt::Client::new(app_config.mqtt_broker_address)?;
-    let conn_opts = mqtt::ConnectOptionsBuilder::new()
-        .client_id(app_config.mqtt_client_id)
-        .keep_alive_interval(Duration::new(30, 0))
-        .finalize();
+    let (client, mut connection) = EspMqttClient::new(
+        &app_config.mqtt_broker_address,
+        &MqttClientConfiguration {
+            client_id: Some(&app_config.mqtt_client_id),
+            ..Default::default()
+        },
+    )?;
 
-    client.connect(conn_opts)?;
+    let mut thread_handles = vec![];
+    thread_handles.push(thread::spawn(move || -> Result<()> {
+        info!("MQTT Listening for messages");
+
+        while let Ok(event) = connection.next() {
+            info!("[Queue] Event: {}", event.payload())
+        }
+
+        info!("Connection closed");
+
+        Ok(())
+    }));
+
     let client_mutex = Arc::new(Mutex::new(client));
 
     let status = Status::new();
     let status_mutex = Arc::new(Mutex::new(status));
 
-    let mut thread_handles = vec![];
-
-    // let publish_client_mutex = Arc::clone(&client_mutex);
+    let publish_client_mutex = Arc::clone(&client_mutex);
     let publish_status_mutex = Arc::clone(&status_mutex);
     thread_handles.push(thread::spawn(move || -> Result<()> {
         loop {
@@ -86,10 +101,10 @@ fn main() -> Result<()> {
                 "Publishing current status: last_changed: {:?}, current_color: {:?}, last_color: {:?}",
                 s.last_changed, s.current_color, s.last_color
             );
+            info!("Using broker at {:?}", app_config.mqtt_broker_address);
 
-            let c = publish_client_mutex.lock().unwrap();
-            let msg = mqtt::Message::new(app_config.mqtt_publish_topic, "Hello World", mqtt::QOS_0);
-            c.publish(msg)?;
+            let mut c = publish_client_mutex.lock().unwrap();
+            c.publish(app_config.mqtt_publish_topic, QoS::AtLeastOnce, false, "hello world".as_bytes())?;
         }
     }));
 
@@ -112,8 +127,6 @@ fn main() -> Result<()> {
             .join()
             .map_err(|e| anyhow!("Thread panicked: {:?}", e))?;
     }
-
-    client.disconnect(None)?;
 
     Ok(())
 }

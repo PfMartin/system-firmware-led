@@ -37,3 +37,8 @@ alias get_esprs='. $HOME/export-esp.sh'
   - `. ~/export-esp.sh`
   - `get_esprs`
 - Run `cargo run` -> Automatically selects the correct USB-Port
+
+### MQTT client
+
+- Uses `esp_idf_svc::mqtt::client` module
+- [Client setup example](https://github.com/esp-rs/esp-idf-svc/blob/master/examples/mqtt_client.rs)
