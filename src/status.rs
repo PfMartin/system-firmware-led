@@ -1,8 +1,10 @@
+use crate::led_control::RgbColor;
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use serde_json::to_string;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::led_control::RgbColor;
-
+#[derive(Serialize, Deserialize)]
 pub struct Status {
     pub last_changed: u64,
     pub current_color: RgbColor,
@@ -27,5 +29,9 @@ impl Status {
         self.current_color = new_color;
 
         Ok(())
+    }
+
+    pub fn to_bytes(&self) -> Result<String> {
+        Ok(to_string(self)?)
     }
 }

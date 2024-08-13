@@ -1,12 +1,10 @@
 use anyhow::{anyhow, Context, Result};
 use embedded_svc::mqtt::client::QoS;
 use esp_idf_hal::prelude::Peripherals;
-use esp_idf_svc::{
-    eventloop::EspSystemEventLoop,
-    mqtt::client::{EspMqttClient, MqttClientConfiguration},
-};
+use esp_idf_svc::eventloop::EspSystemEventLoop;
 use led_control::{set_led_color, RgbColor};
 use log::info;
+use mqtt_client::MqttClient;
 use rand::Rng;
 use status::Status;
 use std::{
@@ -17,6 +15,7 @@ use std::{thread::sleep, time::Duration};
 use wifi_control::connect_to_wifi;
 
 mod led_control;
+mod mqtt_client;
 mod status;
 mod wifi_control;
 
@@ -59,19 +58,13 @@ fn main() -> Result<()> {
         sysloop,
     )?;
 
-    let (client, mut connection) = EspMqttClient::new(
-        &app_config.mqtt_broker_address,
-        &MqttClientConfiguration {
-            client_id: Some(&app_config.mqtt_client_id),
-            ..Default::default()
-        },
-    )?;
+    let mut client = MqttClient::new(app_config.mqtt_broker_address, app_config.mqtt_client_id)?;
 
     let mut thread_handles = vec![];
     thread_handles.push(thread::spawn(move || -> Result<()> {
         info!("MQTT Listening for messages");
 
-        while let Ok(event) = connection.next() {
+        while let Ok(event) = client.connection.next() {
             info!("[Queue] Event: {}", event.payload())
         }
 
@@ -80,7 +73,7 @@ fn main() -> Result<()> {
         Ok(())
     }));
 
-    let client_mutex = Arc::new(Mutex::new(client));
+    let client_mutex = Arc::new(Mutex::new(client.client));
 
     let status = Status::new();
     let status_mutex = Arc::new(Mutex::new(status));
@@ -90,15 +83,18 @@ fn main() -> Result<()> {
     thread_handles.push(thread::spawn(move || -> Result<()> {
         loop {
             sleep(Duration::from_millis(2000));
-            let s = publish_status_mutex.lock().unwrap();
-            info!(
-                "Publishing current status: last_changed: {:?}, current_color: {:?}, last_color: {:?}",
-                s.last_changed, s.current_color, s.last_color
-            );
-            info!("Using broker at {:?}", app_config.mqtt_broker_address);
 
-            let mut c = publish_client_mutex.lock().unwrap();
-            c.publish(app_config.mqtt_publish_topic, QoS::AtLeastOnce, false, "hello world".as_bytes())?;
+            let mut locked_client = publish_client_mutex.lock().unwrap();
+            let locked_status_mutex = publish_status_mutex.lock().unwrap();
+
+            let status_payload = locked_status_mutex.to_bytes()?;
+
+            locked_client.enqueue(
+                app_config.mqtt_publish_topic,
+                QoS::AtLeastOnce,
+                false,
+                &status_payload.into_bytes(),
+            )?;
         }
     }));
 
