@@ -101,15 +101,14 @@ fn main() -> Result<()> {
     let subscription_status_mutex = Arc::clone(&status_mutex);
     thread_handles.push(thread::spawn(move || loop {
         sleep(Duration::from_millis(2000));
-        // info!("Waiting for messages...");
         let mut rng = rand::thread_rng();
         let mut s = subscription_status_mutex.lock().unwrap();
 
         let new_color = (rng.gen(), rng.gen(), rng.gen());
 
         s.set_new_status(new_color)?;
-        let _ = set_led_color(new_color, 0, app_config.indicator_led_gpio)
-            .with_context(|| format!("Failed to set led color"))?;
+        set_led_color(new_color, 0, app_config.indicator_led_gpio)
+            .with_context(|| "Failed to set led color")?;
     }));
 
     for handle in thread_handles {
@@ -122,8 +121,8 @@ fn main() -> Result<()> {
 }
 
 fn initialize_leds(led_strip_gpio: u32, inidicator_led_gpio: u32) -> Result<()> {
-    let _ = set_led_color(LED_STRIP_INITIAL_COLOR, 1, led_strip_gpio)?;
-    let _ = set_led_color(INDICATOR_LED_INITIAL_COLOR, 0, inidicator_led_gpio)?;
+    set_led_color(LED_STRIP_INITIAL_COLOR, 1, led_strip_gpio)?;
+    set_led_color(INDICATOR_LED_INITIAL_COLOR, 0, inidicator_led_gpio)?;
 
     Ok(())
 }

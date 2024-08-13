@@ -13,11 +13,11 @@ pub struct Status {
 
 impl Status {
     pub fn new() -> Status {
-        return Status {
+        Status {
             last_changed: 0,
             current_color: (0, 0, 0),
             last_color: (0, 0, 0),
-        };
+        }
     }
 
     pub fn set_new_status(&mut self, new_color: RgbColor) -> Result<()> {
