@@ -39,6 +39,9 @@ toml-cfg = "0.2.0"
 smart-leds = "0.3.0"
 ws2812-esp32-rmt-driver = "0.6.0"
 heapless = "0.8.0"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"]}
+serde_json = "1.0.124"
 
 
 [build-dependencies]
