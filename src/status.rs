@@ -35,7 +35,7 @@ impl Status {
         Ok(())
     }
 
-    pub fn to_bytes(&self) -> Result<String> {
+    pub fn into_string(&self) -> Result<String> {
         Ok(to_string(self)?)
     }
 }
