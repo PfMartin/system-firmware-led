@@ -35,6 +35,8 @@ pub struct Config {
     mqtt_publish_topic: &'static str,
     #[default("client-1")]
     mqtt_client_id: &'static str,
+    #[default(1)]
+    num_leds: usize,
 }
 
 const LED_STRIP_INITIAL_COLOR: RgbColor = (255, 150, 50);
@@ -46,7 +48,11 @@ fn main() -> Result<()> {
 
     let app_config = CONFIG;
 
-    initialize_leds(app_config.led_strip_gpio, app_config.indicator_led_gpio)?;
+    initialize_leds(
+        app_config.led_strip_gpio,
+        app_config.indicator_led_gpio,
+        app_config.num_leds,
+    )?;
 
     let peripherals = Peripherals::take()?;
     let sysloop = EspSystemEventLoop::take()?;
@@ -75,7 +81,7 @@ fn main() -> Result<()> {
 
     let client_mutex = Arc::new(Mutex::new(client.client));
 
-    let status = Status::new();
+    let status = Status::new(app_config.mqtt_client_id, app_config.num_leds);
     let status_mutex = Arc::new(Mutex::new(status));
 
     let publish_client_mutex = Arc::clone(&client_mutex);
@@ -107,7 +113,7 @@ fn main() -> Result<()> {
         let new_color = (rng.gen(), rng.gen(), rng.gen());
 
         s.set_new_status(new_color)?;
-        set_led_color(new_color, 0, app_config.indicator_led_gpio)
+        set_led_color(new_color, 0, app_config.indicator_led_gpio, 1)
             .with_context(|| "Failed to set led color")?;
     }));
 
@@ -120,9 +126,13 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn initialize_leds(led_strip_gpio: u32, inidicator_led_gpio: u32) -> Result<()> {
-    set_led_color(LED_STRIP_INITIAL_COLOR, 1, led_strip_gpio)?;
-    set_led_color(INDICATOR_LED_INITIAL_COLOR, 0, inidicator_led_gpio)?;
+fn initialize_leds(
+    led_strip_gpio: u32,
+    inidicator_led_gpio: u32,
+    num_strip_leds: usize,
+) -> Result<()> {
+    set_led_color(LED_STRIP_INITIAL_COLOR, 1, led_strip_gpio, num_strip_leds)?;
+    set_led_color(INDICATOR_LED_INITIAL_COLOR, 0, inidicator_led_gpio, 1)?;
 
     Ok(())
 }
