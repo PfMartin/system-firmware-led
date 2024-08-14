@@ -16,8 +16,8 @@ pub struct Status {
 impl Status {
     pub fn new(client_name: &'static str, num_strip_leds: usize) -> Status {
         Status {
-            client_name: client_name,
-            num_strip_leds: num_strip_leds,
+            client_name,
+            num_strip_leds,
             last_changed: 0,
             current_color: (0, 0, 0),
             last_color: (0, 0, 0),
@@ -35,7 +35,7 @@ impl Status {
         Ok(())
     }
 
-    pub fn into_string(&self) -> Result<String> {
-        Ok(to_string(self)?)
+    pub fn to_message(&self) -> Result<Vec<u8>> {
+        Ok(to_string(self)?.into_bytes())
     }
 }

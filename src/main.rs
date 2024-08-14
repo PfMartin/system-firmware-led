@@ -93,13 +93,11 @@ fn main() -> Result<()> {
             let mut locked_client = publish_client_mutex.lock().unwrap();
             let locked_status_mutex = publish_status_mutex.lock().unwrap();
 
-            let status_payload = locked_status_mutex.into_string()?;
-
             locked_client.enqueue(
                 app_config.mqtt_publish_topic,
                 QoS::AtLeastOnce,
                 false,
-                &status_payload.into_bytes(),
+                &locked_status_mutex.to_message()?,
             )?;
         }
     }));
