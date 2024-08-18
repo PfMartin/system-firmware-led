@@ -1,15 +1,13 @@
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{anyhow, Result};
 use esp_idf_hal::prelude::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use led_control::{set_led_color, RgbColor};
 use log::info;
 use mqtt_client::MqttClient;
-use rand::Rng;
 use status::Status;
 use std::{
     sync::{Arc, Mutex},
-    thread::{self, sleep, JoinHandle},
-    time::Duration,
+    thread,
 };
 use wifi_control::connect_to_wifi;
 
@@ -30,6 +28,8 @@ pub struct Config {
     indicator_led_gpio: u32,
     #[default("mqtt://localhost:1883")]
     mqtt_broker_address: &'static str,
+    #[default("color/led-office")]
+    mqtt_subscribe_topic: &'static str,
     #[default("status/led-office")]
     mqtt_publish_topic: &'static str,
     #[default("client-1")]
@@ -88,9 +88,12 @@ fn main() -> Result<()> {
         &status_mutex,
         app_config.mqtt_publish_topic,
     ));
-    thread_handles.push(subscribe_color_change_loop(
+    thread_handles.push(status.subscribe_loop(
+        &client_mutex,
         &status_mutex,
+        app_config.mqtt_subscribe_topic,
         app_config.indicator_led_gpio,
+        1,
     ));
 
     for handle in thread_handles {
@@ -111,23 +114,4 @@ fn initialize_leds(
     set_led_color(INDICATOR_LED_INITIAL_COLOR, 0, inidicator_led_gpio, 1)?;
 
     Ok(())
-}
-
-fn subscribe_color_change_loop(
-    status_mutex: &Arc<Mutex<Status>>,
-    indicator_led_gpio: u32,
-) -> JoinHandle<Result<(), Error>> {
-    let subscription_status_mutex = Arc::clone(status_mutex);
-
-    thread::spawn(move || loop {
-        sleep(Duration::from_millis(2000));
-        let mut rng = rand::thread_rng();
-        let mut s = subscription_status_mutex.lock().unwrap();
-
-        let new_color = (rng.gen(), rng.gen(), rng.gen());
-
-        s.set_new_status(new_color)?;
-        set_led_color(new_color, 0, indicator_led_gpio, 1)
-            .with_context(|| "Failed to set led color")?;
-    })
 }

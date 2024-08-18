@@ -1,7 +1,8 @@
-use crate::led_control::RgbColor;
-use anyhow::{Error, Result};
+use crate::led_control::{set_led_color, RgbColor};
+use anyhow::{Context, Error, Result};
 use embedded_svc::mqtt::client::QoS;
 use esp_idf_svc::mqtt::client::EspMqttClient;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 use std::{
@@ -68,6 +69,29 @@ impl Status {
                     &locked_status_mutex.to_message()?,
                 )?;
             }
+        })
+    }
+
+    pub fn subscribe_loop(
+        &self,
+        _client_mutex: &Arc<Mutex<EspMqttClient<'static>>>,
+        status_mutex: &Arc<Mutex<Status>>,
+        _subscribe_topic: &'static str,
+        num_led_pin: u32,
+        num_leds: usize,
+    ) -> JoinHandle<Result<(), Error>> {
+        let subscription_status_mutex = Arc::clone(status_mutex);
+
+        thread::spawn(move || loop {
+            sleep(Duration::from_millis(2000));
+            let mut rng = rand::thread_rng();
+            let mut s = subscription_status_mutex.lock().unwrap();
+
+            let new_color = (rng.gen(), rng.gen(), rng.gen());
+
+            s.set_new_status(new_color)?;
+            set_led_color(new_color, 0, num_led_pin, num_leds)
+                .with_context(|| "Failed to set led color")?;
         })
     }
 }
