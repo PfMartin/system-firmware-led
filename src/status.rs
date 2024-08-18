@@ -1,4 +1,4 @@
-use crate::led_control::{set_led_color, RgbColor};
+use crate::led::{Led, RgbColor};
 use anyhow::{Context, Error, Result};
 use embedded_svc::mqtt::client::QoS;
 use esp_idf_svc::mqtt::client::EspMqttClient;
@@ -77,8 +77,7 @@ impl Status {
         _client_mutex: &Arc<Mutex<EspMqttClient<'static>>>,
         status_mutex: &Arc<Mutex<Status>>,
         _subscribe_topic: &'static str,
-        num_led_pin: u32,
-        num_leds: usize,
+        led: Led,
     ) -> JoinHandle<Result<(), Error>> {
         let subscription_status_mutex = Arc::clone(status_mutex);
 
@@ -90,7 +89,7 @@ impl Status {
             let new_color = (rng.gen(), rng.gen(), rng.gen());
 
             s.set_new_status(new_color)?;
-            set_led_color(new_color, 0, num_led_pin, num_leds)
+            led.set_led_color(new_color)
                 .with_context(|| "Failed to set led color")?;
         })
     }

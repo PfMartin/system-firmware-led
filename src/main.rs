@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use esp_idf_hal::prelude::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
-use led_control::{set_led_color, RgbColor};
+use led::{Led, RgbColor};
 use log::info;
 use mqtt_client::MqttClient;
 use status::Status;
@@ -11,7 +11,7 @@ use std::{
 };
 use wifi_control::connect_to_wifi;
 
-mod led_control;
+mod led;
 mod mqtt_client;
 mod status;
 mod wifi_control;
@@ -47,11 +47,11 @@ fn main() -> Result<()> {
 
     let app_config = CONFIG;
 
-    initialize_leds(
-        app_config.led_strip_gpio,
-        app_config.indicator_led_gpio,
-        app_config.num_leds,
-    )?;
+    let indicator_led = Led::new(1, app_config.indicator_led_gpio, 1);
+    indicator_led.set_led_color(INDICATOR_LED_INITIAL_COLOR)?;
+
+    let led_strip = Led::new(0, app_config.led_strip_gpio, app_config.num_leds);
+    led_strip.set_led_color(LED_STRIP_INITIAL_COLOR)?;
 
     let peripherals = Peripherals::take()?;
     let sysloop = EspSystemEventLoop::take()?;
@@ -92,8 +92,7 @@ fn main() -> Result<()> {
         &client_mutex,
         &status_mutex,
         app_config.mqtt_subscribe_topic,
-        app_config.indicator_led_gpio,
-        1,
+        indicator_led,
     ));
 
     for handle in thread_handles {
@@ -101,17 +100,6 @@ fn main() -> Result<()> {
             .join()
             .map_err(|e| anyhow!("Thread panicked: {:?}", e))?;
     }
-
-    Ok(())
-}
-
-fn initialize_leds(
-    led_strip_gpio: u32,
-    inidicator_led_gpio: u32,
-    num_strip_leds: usize,
-) -> Result<()> {
-    set_led_color(LED_STRIP_INITIAL_COLOR, 1, led_strip_gpio, num_strip_leds)?;
-    set_led_color(INDICATOR_LED_INITIAL_COLOR, 0, inidicator_led_gpio, 1)?;
 
     Ok(())
 }
