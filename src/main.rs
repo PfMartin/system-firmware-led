@@ -3,15 +3,14 @@ use esp_idf_hal::prelude::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use led::{Led, RgbColor};
 use log::info;
+use message_controller::MessageController;
 use mqtt_client::MqttClient;
 use status::Status;
-use std::{
-    sync::{Arc, Mutex},
-    thread,
-};
+use std::{sync::Arc, thread};
 use wifi_control::connect_to_wifi;
 
 mod led;
+mod message_controller;
 mod mqtt_client;
 mod status;
 mod wifi_control;
@@ -78,26 +77,25 @@ fn main() -> Result<()> {
         Ok(())
     }));
 
-    let client_mutex = Arc::new(Mutex::new(client.client));
-
     let status = Status::new(
         app_config.mqtt_client_id,
         app_config.num_leds,
         app_config.mqtt_subscribe_topic,
     );
-    let status_mutex = Arc::new(Mutex::new(status));
 
-    thread_handles.push(status.publish_loop(
-        &client_mutex,
-        &status_mutex,
+    let message_controller = MessageController::new(
+        client.client,
+        status,
         app_config.mqtt_publish_topic,
-    ));
-    thread_handles.push(status.subscribe_loop(
-        &client_mutex,
-        &status_mutex,
         app_config.mqtt_subscribe_topic,
-        indicator_led,
-    ));
+    );
+
+    let controller_arc = Arc::new(message_controller);
+    let publish_controller = Arc::clone(&controller_arc);
+    let subscribe_controller = Arc::clone(&controller_arc);
+
+    thread_handles.push(publish_controller.start_publish_loop());
+    thread_handles.push(subscribe_controller.start_subscribe_loop(indicator_led));
 
     for handle in thread_handles {
         let _ = handle
