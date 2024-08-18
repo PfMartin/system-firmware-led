@@ -27,7 +27,7 @@ pub struct Config {
     indicator_led_gpio: u32,
     #[default("mqtt://localhost:1883")]
     mqtt_broker_address: &'static str,
-    #[default("color/led-office")]
+    #[default("led-color/office")]
     mqtt_subscribe_topic: &'static str,
     #[default("status/led-office")]
     mqtt_publish_topic: &'static str,
