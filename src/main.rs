@@ -80,7 +80,11 @@ fn main() -> Result<()> {
 
     let client_mutex = Arc::new(Mutex::new(client.client));
 
-    let status = Status::new(app_config.mqtt_client_id, app_config.num_leds);
+    let status = Status::new(
+        app_config.mqtt_client_id,
+        app_config.num_leds,
+        app_config.mqtt_subscribe_topic,
+    );
     let status_mutex = Arc::new(Mutex::new(status));
 
     thread_handles.push(status.publish_loop(

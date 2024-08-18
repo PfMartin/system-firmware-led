@@ -13,18 +13,24 @@ use std::{
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Status {
-    client_name: &'static str,
-    num_strip_leds: usize,
+    pub client_name: &'static str,
+    pub num_strip_leds: usize,
+    pub change_color_topic: &'static str,
     pub last_changed: u64,
     pub current_color: RgbColor,
     pub last_color: RgbColor,
 }
 
 impl Status {
-    pub fn new(client_name: &'static str, num_strip_leds: usize) -> Status {
+    pub fn new(
+        client_name: &'static str,
+        num_strip_leds: usize,
+        change_color_topic: &'static str,
+    ) -> Status {
         Status {
             client_name,
             num_strip_leds,
+            change_color_topic,
             last_changed: 0,
             current_color: (0, 0, 0),
             last_color: (0, 0, 0),
