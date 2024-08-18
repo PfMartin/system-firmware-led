@@ -1,8 +1,9 @@
 use crate::{led::Led, status::Status};
-use anyhow::{Error, Result};
+use anyhow::{Context, Error, Result};
 use embedded_svc::mqtt::client::QoS;
-use esp_idf_svc::mqtt::client::EspMqttClient;
+use esp_idf_svc::mqtt::client::{EspMqttClient, EspMqttConnection, EventPayload::Received};
 use log::{error, info};
+use rand::Rng;
 use std::{
     sync::{Arc, Mutex},
     thread::{self, sleep, JoinHandle},
@@ -35,6 +36,50 @@ impl MessageController {
             subscribe_topic,
             controlled_led,
         }
+    }
+
+    pub fn start_listening_loop(
+        self: Arc<Self>,
+        mut connection: EspMqttConnection,
+    ) -> JoinHandle<Result<(), Error>> {
+        return thread::spawn(move || -> Result<()> {
+            info!("MQTT Listening for messages");
+
+            while let Ok(event) = connection.next() {
+                let payload = event.payload();
+
+                match payload {
+                    Received {
+                        id,
+                        topic,
+                        data: _,
+                        details,
+                    } => {
+                        if topic == Some(&self.subscribe_topic) {
+                            info!(
+                                "Received message from topic {:?}, details: {:?}, id: {id}",
+                                topic, details
+                            );
+
+                            let mut rng = rand::thread_rng();
+                            let new_color = (rng.gen(), rng.gen(), rng.gen());
+
+                            self.controlled_led
+                                .set_led_color(new_color)
+                                .with_context(|| "Failed to set led color")?;
+
+                            // let mut locked_status_mutex = status_mutex.lock().unwrap();
+                            // locked_status_mutex.set_new_status(new_color)?;
+                        }
+                    }
+                    _ => info!("[Queue] Event: {}", event.payload()),
+                }
+            }
+
+            info!("Connection closed");
+
+            Ok(())
+        });
     }
 
     pub fn start_publish_loop(self: Arc<Self>) -> JoinHandle<Result<(), Error>> {
