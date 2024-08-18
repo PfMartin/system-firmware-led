@@ -1,21 +1,20 @@
 use crate::{led::Led, status::Status};
-use anyhow::{Context, Error, Result};
+use anyhow::{Error, Result};
 use embedded_svc::mqtt::client::QoS;
 use esp_idf_svc::mqtt::client::EspMqttClient;
-use log::info;
-use rand::Rng;
+use log::{error, info};
 use std::{
     sync::{Arc, Mutex},
     thread::{self, sleep, JoinHandle},
     time::Duration,
 };
 
-#[derive(Clone)]
 pub struct MessageController {
     client_mutex: Arc<Mutex<EspMqttClient<'static>>>,
     status_mutex: Arc<Mutex<Status>>,
     publish_topic: &'static str,
     subscribe_topic: &'static str,
+    controlled_led: Led,
 }
 
 impl MessageController {
@@ -24,6 +23,7 @@ impl MessageController {
         status: Status,
         publish_topic: &'static str,
         subscribe_topic: &'static str,
+        controlled_led: Led,
     ) -> MessageController {
         let client_mutex = Arc::new(Mutex::new(client));
         let status_mutex = Arc::new(Mutex::new(status));
@@ -33,6 +33,7 @@ impl MessageController {
             status_mutex,
             publish_topic,
             subscribe_topic,
+            controlled_led,
         }
     }
 
@@ -54,18 +55,31 @@ impl MessageController {
         })
     }
 
-    pub fn start_subscribe_loop(self: Arc<Self>, led: Led) -> JoinHandle<Result<(), Error>> {
-        thread::spawn(move || loop {
-            sleep(Duration::from_millis(2000));
-            info!("{:?}", self.subscribe_topic);
-            let mut rng = rand::thread_rng();
-            let mut locked_status_mutex = self.status_mutex.lock().unwrap();
+    pub fn start_subscribe_loop(self: Arc<Self>) -> JoinHandle<Result<(), Error>> {
+        thread::spawn(move || -> Result<()> {
+            loop {
+                let mut locked_client_mutex = self.client_mutex.lock().unwrap();
+                let mut locked_status_mutex = self.status_mutex.lock().unwrap();
+                if let Err(e) =
+                    locked_client_mutex.subscribe(&self.subscribe_topic, QoS::AtMostOnce)
+                {
+                    error!(
+                        "Failed to subscribe to topic \"{}\": {}, retrying...",
+                        &self.subscribe_topic, e
+                    );
 
-            let new_color = (rng.gen(), rng.gen(), rng.gen());
+                    sleep(Duration::from_millis(500));
 
-            locked_status_mutex.set_new_status(new_color)?;
-            led.set_led_color(new_color)
-                .with_context(|| "Failed to set led color")?;
+                    continue;
+                }
+
+                info!("Subscribed to topic: \"{}\"", &self.subscribe_topic);
+                locked_status_mutex.set_is_subscribed(true)?;
+
+                break;
+            }
+
+            Ok(())
         })
     }
 }

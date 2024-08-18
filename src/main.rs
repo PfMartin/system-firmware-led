@@ -1,10 +1,12 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use esp_idf_hal::prelude::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
+use esp_idf_svc::mqtt::client::EventPayload::Received;
 use led::{Led, RgbColor};
 use log::info;
 use message_controller::MessageController;
 use mqtt_client::MqttClient;
+use rand::Rng;
 use status::Status;
 use std::{sync::Arc, thread};
 use wifi_control::connect_to_wifi;
@@ -63,13 +65,39 @@ fn main() -> Result<()> {
     )?;
 
     let mut client = MqttClient::new(app_config.mqtt_broker_address, app_config.mqtt_client_id)?;
-
     let mut thread_handles = vec![];
     thread_handles.push(thread::spawn(move || -> Result<()> {
         info!("MQTT Listening for messages");
 
         while let Ok(event) = client.connection.next() {
-            info!("[Queue] Event: {}", event.payload())
+            let payload = event.payload();
+
+            match payload {
+                Received {
+                    id,
+                    topic,
+                    data: _,
+                    details,
+                } => {
+                    if topic == Some(app_config.mqtt_subscribe_topic) {
+                        info!(
+                            "Received message from topic {:?}, details: {:?}, id: {id}",
+                            topic, details
+                        );
+
+                        let mut rng = rand::thread_rng();
+                        let new_color = (rng.gen(), rng.gen(), rng.gen());
+
+                        indicator_led
+                            .set_led_color(new_color)
+                            .with_context(|| "Failed to set led color")?;
+
+                        // let mut locked_status_mutex = status_mutex.lock().unwrap();
+                        // locked_status_mutex.set_new_status(new_color)?;
+                    }
+                }
+                _ => info!("[Queue] Event: {}", event.payload()),
+            }
         }
 
         info!("Connection closed");
@@ -88,6 +116,7 @@ fn main() -> Result<()> {
         status,
         app_config.mqtt_publish_topic,
         app_config.mqtt_subscribe_topic,
+        led_strip,
     );
 
     let controller_arc = Arc::new(message_controller);
@@ -95,7 +124,7 @@ fn main() -> Result<()> {
     let subscribe_controller = Arc::clone(&controller_arc);
 
     thread_handles.push(publish_controller.start_publish_loop());
-    thread_handles.push(subscribe_controller.start_subscribe_loop(indicator_led));
+    thread_handles.push(subscribe_controller.start_subscribe_loop());
 
     for handle in thread_handles {
         let _ = handle

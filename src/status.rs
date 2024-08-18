@@ -12,6 +12,7 @@ pub struct Status {
     pub last_changed: u64,
     pub current_color: RgbColor,
     pub last_color: RgbColor,
+    pub is_subscribed: bool,
 }
 
 impl Status {
@@ -27,16 +28,30 @@ impl Status {
             last_changed: 0,
             current_color: (0, 0, 0),
             last_color: (0, 0, 0),
+            is_subscribed: false,
         }
     }
 
     pub fn set_new_status(&mut self, new_color: RgbColor) -> Result<()> {
+        self.update_last_changed()?;
+        self.last_color = self.current_color;
+        self.current_color = new_color;
+
+        Ok(())
+    }
+
+    pub fn set_is_subscribed(&mut self, is_subscribed: bool) -> Result<()> {
+        self.update_last_changed()?;
+        self.is_subscribed = is_subscribed;
+
+        Ok(())
+    }
+
+    fn update_last_changed(&mut self) -> Result<()> {
         let now = SystemTime::now();
         let duration_since_epoch = now.duration_since(UNIX_EPOCH)?;
 
         self.last_changed = duration_since_epoch.as_secs();
-        self.last_color = self.current_color;
-        self.current_color = new_color;
 
         Ok(())
     }
