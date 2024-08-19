@@ -25,6 +25,8 @@ pub struct Config {
     led_strip_gpio: u32,
     #[default(8)]
     indicator_led_gpio: u32,
+    #[default(30)]
+    publish_status_interval_s: u32,
     #[default("mqtt://localhost:1883")]
     mqtt_broker_address: &'static str,
     #[default("led-color/office")]
@@ -73,9 +75,10 @@ fn main() -> Result<()> {
     let message_controller = MessageController::new(
         client.client,
         status,
+        app_config.publish_status_interval_s,
         app_config.mqtt_publish_topic,
         app_config.mqtt_subscribe_topic,
-        led_strip,
+        indicator_led,
     );
 
     let controller_arc = Arc::new(message_controller);
@@ -83,10 +86,11 @@ fn main() -> Result<()> {
     let publish_controller = Arc::clone(&controller_arc);
     let subscribe_controller = Arc::clone(&controller_arc);
 
-    let mut thread_handles = vec![];
-    thread_handles.push(listening_controller.start_listening_loop(client.connection));
-    thread_handles.push(publish_controller.start_publish_loop());
-    thread_handles.push(subscribe_controller.start_subscribe_loop());
+    let thread_handles = vec![
+        listening_controller.start_listening_loop(client.connection),
+        publish_controller.start_publish_loop(),
+        subscribe_controller.start_subscribe_loop(),
+    ];
 
     for handle in thread_handles {
         let _ = handle

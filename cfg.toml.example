@@ -1,8 +1,9 @@
 [system-firmware-led]
 wifi_ssid = "FRITZ!Box 7582 PJ"
 wifi_psk = "95605533072376088713"
+status_publish_interval_s = 30
 mqtt_broker_address = "mqtt://192.168.178.20:1883"
-mqtt_publish_topic = "status/led-office"
-mqtt_subscribe_topic = "led-color/office"
+mqtt_publish_topic = "status/office-sensor"
+mqtt_subscribe_topic = "led-color/office-sensor"
 mqtt_client_id = "office-sensor"
 num_leds = 59
