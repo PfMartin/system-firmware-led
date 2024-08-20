@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use esp_idf_hal::prelude::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 
@@ -88,21 +88,7 @@ fn main() -> Result<()> {
     );
 
     let controller_arc = Arc::new(message_controller);
-    let listening_controller = Arc::clone(&controller_arc);
-    let publish_controller = Arc::clone(&controller_arc);
-    let subscribe_controller = Arc::clone(&controller_arc);
-
-    let thread_handles = vec![
-        listening_controller.start_listening_loop(client.connection),
-        publish_controller.start_publish_loop(),
-        subscribe_controller.start_subscribe_loop(),
-    ];
-
-    for handle in thread_handles {
-        let _ = handle
-            .join()
-            .map_err(|e| anyhow!("Thread panicked: {:?}", e))?;
-    }
+    controller_arc.start_listening_loop(client.connection)?;
 
     Ok(())
 }

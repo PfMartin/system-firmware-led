@@ -2,7 +2,7 @@ use crate::{
     led::{IndicatorLedConfig, Led, RgbColor},
     status::Status,
 };
-use anyhow::{Context, Error, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use embedded_svc::mqtt::client::QoS;
 use esp_idf_svc::mqtt::client::{
     EspMqttClient, EspMqttConnection,
@@ -62,63 +62,71 @@ impl MessageController {
     pub fn start_listening_loop(
         self: Arc<Self>,
         mut connection: EspMqttConnection,
-    ) -> JoinHandle<Result<(), Error>> {
-        thread::spawn(move || -> Result<()> {
-            info!("MQTT Listening for messages");
+    ) -> Result<(), Error> {
+        info!("MQTT Listening for messages");
 
-            while let Ok(event) = connection.next() {
-                let payload = event.payload();
+        let mut thread_handles = vec![];
 
-                match payload {
-                    Received {
-                        id,
-                        topic,
-                        data,
-                        details,
-                    } => {
-                        if let Some(t) = topic {
-                            if t == self.subscribe_topic {
-                                info!(
-                                    "Received message from topic {:?}, details: {:?}, id: {id}",
-                                    topic, details
-                                );
+        while let Ok(event) = connection.next() {
+            let payload = event.payload();
 
-                                let color_data: ColorData = serde_json::from_slice(data)?;
-                                let rgb_color: RgbColor =
-                                    (color_data.red, color_data.green, color_data.blue);
+            match payload {
+                Received {
+                    id,
+                    topic,
+                    data,
+                    details,
+                } => {
+                    if let Some(t) = topic {
+                        if t == self.subscribe_topic {
+                            info!(
+                                "Received message from topic {:?}, details: {:?}, id: {id}",
+                                topic, details
+                            );
 
-                                let mut locked_status_mutex = self.status_mutex.lock().unwrap();
-                                locked_status_mutex.set_new_status(rgb_color)?;
+                            let color_data: ColorData = serde_json::from_slice(data)?;
+                            let rgb_color: RgbColor =
+                                (color_data.red, color_data.green, color_data.blue);
 
-                                self.led_strip
-                                    .set_led_color(rgb_color)
-                                    .with_context(|| "Failed to set led color")?;
-                            }
+                            let mut locked_status_mutex = self.status_mutex.lock().unwrap();
+                            locked_status_mutex.set_new_status(rgb_color)?;
+
+                            self.led_strip
+                                .set_led_color(rgb_color)
+                                .with_context(|| "Failed to set led color")?;
                         }
                     }
-                    Connected(_) => {
-                        self.indicator_led
-                            .set_led_color(self.indicator_led_config.message_broker_connection)?;
-                        info!("Connected to message broker");
-                        let s = self.clone();
-                        s.start_subscribe_loop();
-                    }
-                    EventError(e) => {
-                        error!("Error: {e}");
-                        let mut locked_client_mutex = self.client_mutex.lock().unwrap();
-                        locked_client_mutex.unsubscribe(&self.subscribe_topic)?;
-                        info!("Unsubscribed from topic '{}'", self.subscribe_topic);
-                        self.indicator_led
-                            .set_led_color(self.indicator_led_config.wifi_connection)?;
-                    }
-                    _ => info!("[Queue] Event: {}", event.payload()),
                 }
+                Connected(_) => {
+                    self.indicator_led
+                        .set_led_color(self.indicator_led_config.message_broker_connection)?;
+                    info!("Connected to message broker");
+                    let publisher = self.clone();
+                    let subscriber = self.clone();
+                    thread_handles.push(publisher.start_publish_loop());
+                    thread_handles.push(subscriber.subscribe());
+                }
+                EventError(e) => {
+                    error!("Error: {e}");
+                    let mut locked_client_mutex = self.client_mutex.lock().unwrap();
+                    locked_client_mutex.unsubscribe(&self.subscribe_topic)?;
+                    info!("Unsubscribed from topic '{}'", self.subscribe_topic);
+                    self.indicator_led
+                        .set_led_color(self.indicator_led_config.wifi_connection)?;
+                }
+                _ => info!("[Queue] Event: {}", event.payload()),
             }
+        }
 
-            info!("Connection closed");
+        for handle in thread_handles {
+            let _ = handle
+                .join()
+                .map_err(|e| anyhow!("Thread panicked: {:?}", e))?;
+        }
 
-            Ok(())
-        })
+        info!("Connection closed");
+
+        Ok(())
     }
 
     pub fn start_publish_loop(self: Arc<Self>) -> JoinHandle<Result<(), Error>> {
@@ -139,7 +147,7 @@ impl MessageController {
         })
     }
 
-    pub fn start_subscribe_loop(self: Arc<Self>) -> JoinHandle<Result<(), Error>> {
+    pub fn subscribe(self: Arc<Self>) -> JoinHandle<Result<(), Error>> {
         thread::spawn(move || -> Result<()> {
             loop {
                 let mut locked_client_mutex = self.client_mutex.lock().unwrap();
