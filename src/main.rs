@@ -83,8 +83,8 @@ fn main() -> Result<()> {
         app_config.publish_status_interval_s,
         app_config.mqtt_publish_topic,
         app_config.mqtt_subscribe_topic,
-        indicator_led,
         led_strip,
+        indicator_led,
     );
 
     let controller_arc = Arc::new(message_controller);

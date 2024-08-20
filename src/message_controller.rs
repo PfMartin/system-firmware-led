@@ -32,6 +32,7 @@ pub struct MessageController {
     indicator_led: Led,
     led_strip: Led,
     indicator_led_config: IndicatorLedConfig,
+    stop_signal: Arc<Mutex<bool>>,
 }
 
 impl MessageController {
@@ -56,6 +57,7 @@ impl MessageController {
             indicator_led,
             led_strip,
             indicator_led_config: IndicatorLedConfig::new(),
+            stop_signal: Arc::new(Mutex::new(false)),
         }
     }
 
@@ -88,8 +90,8 @@ impl MessageController {
                             let rgb_color: RgbColor =
                                 (color_data.red, color_data.green, color_data.blue);
 
-                            let mut locked_status_mutex = self.status_mutex.lock().unwrap();
-                            locked_status_mutex.set_new_status(rgb_color)?;
+                            let mut locked_status = self.status_mutex.lock().unwrap();
+                            locked_status.set_new_status(rgb_color)?;
 
                             self.led_strip
                                 .set_led_color(rgb_color)
@@ -98,16 +100,22 @@ impl MessageController {
                     }
                 }
                 Connected(_) => {
+                    info!("Connected to message broker");
+                    *self.stop_signal.lock().unwrap() = false;
+
                     self.indicator_led
                         .set_led_color(self.indicator_led_config.message_broker_connection)?;
-                    info!("Connected to message broker");
+
                     let publisher = self.clone();
-                    let subscriber = self.clone();
                     thread_handles.push(publisher.start_publish_loop());
+
+                    let subscriber = self.clone();
                     thread_handles.push(subscriber.subscribe());
                 }
                 Disconnected => {
                     info!("Disconnected from message broker");
+                    *self.stop_signal.lock().unwrap() = true;
+
                     self.indicator_led
                         .set_led_color(self.indicator_led_config.wifi_connection)?;
                 }
@@ -115,42 +123,66 @@ impl MessageController {
             }
         }
 
-        info!("Connection closed");
-
         for handle in thread_handles {
+            info!("Joining handle");
             let _ = handle
                 .join()
                 .map_err(|e| anyhow!("Thread panicked: {:?}", e))?;
         }
 
+        info!("Connection closed");
+
         Ok(())
     }
 
     pub fn start_publish_loop(self: Arc<Self>) -> JoinHandle<Result<(), Error>> {
+        info!("Starting to publish the status");
+
         thread::spawn(move || -> Result<()> {
+            let stop_signal = self.stop_signal.clone();
+
             loop {
-                sleep(Duration::from_secs(self.publish_status_interval_s.into()));
+                let thread_stopper = stop_signal.lock().unwrap();
+                if *thread_stopper {
+                    info!("Stopping publish loop");
+                    return Ok(());
+                }
+                drop(thread_stopper);
 
                 let mut locked_client = self.client_mutex.lock().unwrap();
-                let locked_status_mutex = self.status_mutex.lock().unwrap();
+                let locked_status = self.status_mutex.lock().unwrap();
 
                 locked_client.enqueue(
                     self.publish_topic,
                     QoS::AtLeastOnce,
                     false,
-                    &locked_status_mutex.to_message()?,
+                    &locked_status.to_message()?,
                 )?;
+                drop(locked_client);
+                drop(locked_status);
+
+                sleep(Duration::from_secs(self.publish_status_interval_s.into()));
             }
         })
     }
 
     pub fn subscribe(self: Arc<Self>) -> JoinHandle<Result<(), Error>> {
         thread::spawn(move || -> Result<()> {
+            info!("Trying to subscribe to topic: '{}'", self.subscribe_topic);
+
+            let stop_signal = self.stop_signal.clone();
+
             loop {
-                let mut locked_client_mutex = self.client_mutex.lock().unwrap();
-                let mut locked_status_mutex = self.status_mutex.lock().unwrap();
-                if let Err(e) = locked_client_mutex.subscribe(self.subscribe_topic, QoS::AtMostOnce)
-                {
+                let thread_stopper = stop_signal.lock().unwrap();
+                if *thread_stopper {
+                    info!("Stopping subscribe loop");
+                    return Ok(());
+                }
+                drop(thread_stopper);
+
+                let mut locked_client = self.client_mutex.lock().unwrap();
+                let mut locked_status = self.status_mutex.lock().unwrap();
+                if let Err(e) = locked_client.subscribe(self.subscribe_topic, QoS::AtMostOnce) {
                     error!(
                         "Failed to subscribe to topic \"{}\": {}, retrying...",
                         &self.subscribe_topic, e
@@ -162,7 +194,7 @@ impl MessageController {
                 }
 
                 info!("Subscribed to topic: \"{}\"", &self.subscribe_topic);
-                locked_status_mutex.set_is_subscribed(true)?;
+                locked_status.set_is_subscribed(true)?;
 
                 break;
             }
