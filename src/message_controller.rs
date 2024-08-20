@@ -82,20 +82,23 @@ impl MessageController {
                     if let Some(t) = topic {
                         if t == self.subscribe_topic {
                             info!(
-                                "Received message from topic {:?}, details: {:?}, id: {id}",
-                                topic, details
+                                "Received message from topic {:?}, details: {t}, id: {id}",
+                                details
                             );
 
-                            let color_data: ColorData = serde_json::from_slice(data)?;
-                            let rgb_color: RgbColor =
-                                (color_data.red, color_data.green, color_data.blue);
+                            let color_data: Result<ColorData, serde_json::Error> =
+                                serde_json::from_slice(data);
+                            if let Ok(color) = color_data {
+                                let rgb_color: RgbColor = (color.red, color.green, color.blue);
 
-                            let mut locked_status = self.status_mutex.lock().unwrap();
-                            locked_status.set_new_status(rgb_color)?;
+                                let mut locked_status = self.status_mutex.lock().unwrap();
+                                locked_status.set_new_status(rgb_color)?;
+                                drop(locked_status);
 
-                            self.led_strip
-                                .set_led_color(rgb_color)
-                                .with_context(|| "Failed to set led color")?;
+                                self.led_strip
+                                    .set_led_color(rgb_color)
+                                    .with_context(|| "Failed to set led color")?;
+                            }
                         }
                     }
                 }
@@ -192,9 +195,11 @@ impl MessageController {
 
                     continue;
                 }
+                drop(locked_client);
 
                 info!("Subscribed to topic: \"{}\"", &self.subscribe_topic);
                 locked_status.set_is_subscribed(true)?;
+                drop(locked_status);
 
                 break;
             }
