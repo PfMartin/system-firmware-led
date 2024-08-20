@@ -5,7 +5,7 @@ use ws2812_esp32_rmt_driver::Ws2812Esp32Rmt;
 pub struct IndicatorLedConfig {
     pub disconnected: RgbColor,
     pub wifi_connection: RgbColor,
-    pub message_broker_connection: RgbColor, 
+    pub message_broker_connection: RgbColor,
 }
 
 impl IndicatorLedConfig {

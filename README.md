@@ -42,3 +42,8 @@ alias get_esprs='. $HOME/export-esp.sh'
 
 - Uses `esp_idf_svc::mqtt::client` module
 - [Client setup example](https://github.com/esp-rs/esp-idf-svc/blob/master/examples/mqtt_client.rs)
+
+## TODOs
+
+- Create error topic for sending error messages regarding wrong color formats and so on
+- Make the code compatible with non-led setups
