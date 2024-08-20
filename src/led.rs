@@ -2,6 +2,21 @@ use anyhow::Result;
 use smart_leds::{SmartLedsWrite, RGB8};
 use ws2812_esp32_rmt_driver::Ws2812Esp32Rmt;
 
+pub struct IndicatorLedConfig {
+    pub disconnected: RgbColor,
+    pub wifi_connection: RgbColor,
+    pub message_broker_connection: RgbColor, 
+}
+
+impl IndicatorLedConfig {
+    pub fn new() -> Self {
+        IndicatorLedConfig {
+            disconnected: (255, 0, 0),
+            wifi_connection: (255, 50, 0),
+            message_broker_connection: (0, 20, 20),
+        }
+    }
+}
 
 pub type RgbColor = (u8, u8, u8);
 

@@ -1,10 +1,13 @@
 use crate::{
-    led::{Led, RgbColor},
+    led::{IndicatorLedConfig, Led, RgbColor},
     status::Status,
 };
 use anyhow::{Context, Error, Result};
 use embedded_svc::mqtt::client::QoS;
-use esp_idf_svc::mqtt::client::{EspMqttClient, EspMqttConnection, EventPayload::Received};
+use esp_idf_svc::mqtt::client::{
+    EspMqttClient, EspMqttConnection,
+    EventPayload::{Connected, Error as EventError, Received},
+};
 use log::{error, info};
 use serde::Deserialize;
 use std::{
@@ -26,7 +29,9 @@ pub struct MessageController {
     publish_status_interval_s: u32,
     publish_topic: &'static str,
     subscribe_topic: &'static str,
-    controlled_led: Led,
+    indicator_led: Led,
+    led_strip: Led,
+    indicator_led_config: IndicatorLedConfig,
 }
 
 impl MessageController {
@@ -36,7 +41,8 @@ impl MessageController {
         publish_status_interval_s: u32,
         publish_topic: &'static str,
         subscribe_topic: &'static str,
-        controlled_led: Led,
+        indicator_led: Led,
+        led_strip: Led,
     ) -> MessageController {
         let client_mutex = Arc::new(Mutex::new(client));
         let status_mutex = Arc::new(Mutex::new(status));
@@ -47,7 +53,9 @@ impl MessageController {
             publish_status_interval_s,
             publish_topic,
             subscribe_topic,
-            controlled_led,
+            indicator_led,
+            led_strip,
+            indicator_led_config: IndicatorLedConfig::new(),
         }
     }
 
@@ -82,11 +90,26 @@ impl MessageController {
                                 let mut locked_status_mutex = self.status_mutex.lock().unwrap();
                                 locked_status_mutex.set_new_status(rgb_color)?;
 
-                                self.controlled_led
+                                self.led_strip
                                     .set_led_color(rgb_color)
                                     .with_context(|| "Failed to set led color")?;
                             }
                         }
+                    }
+                    Connected(_) => {
+                        self.indicator_led
+                            .set_led_color(self.indicator_led_config.message_broker_connection)?;
+                        info!("Connected to message broker");
+                        let s = self.clone();
+                        s.start_subscribe_loop();
+                    }
+                    EventError(e) => {
+                        error!("Error: {e}");
+                        let mut locked_client_mutex = self.client_mutex.lock().unwrap();
+                        locked_client_mutex.unsubscribe(&self.subscribe_topic)?;
+                        info!("Unsubscribed from topic '{}'", self.subscribe_topic);
+                        self.indicator_led
+                            .set_led_color(self.indicator_led_config.wifi_connection)?;
                     }
                     _ => info!("[Queue] Event: {}", event.payload()),
                 }

@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use esp_idf_hal::prelude::Peripherals;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 
-use led::{Led, RgbColor};
+use led::{IndicatorLedConfig, Led, RgbColor};
 use message_controller::MessageController;
 use mqtt_client::MqttClient;
 use status::Status;
@@ -40,7 +40,6 @@ pub struct Config {
 }
 
 const LED_STRIP_INITIAL_COLOR: RgbColor = (255, 150, 50);
-const INDICATOR_LED_INITIAL_COLOR: RgbColor = (0, 20, 20);
 
 fn main() -> Result<()> {
     esp_idf_svc::sys::link_patches();
@@ -48,8 +47,10 @@ fn main() -> Result<()> {
 
     let app_config = CONFIG;
 
+    let indicator_led_config = IndicatorLedConfig::new();
+
     let indicator_led = Led::new(1, app_config.indicator_led_gpio, 1);
-    indicator_led.set_led_color(INDICATOR_LED_INITIAL_COLOR)?;
+    indicator_led.set_led_color(indicator_led_config.disconnected)?;
 
     let led_strip = Led::new(0, app_config.led_strip_gpio, app_config.num_leds);
     led_strip.set_led_color(LED_STRIP_INITIAL_COLOR)?;
@@ -57,12 +58,16 @@ fn main() -> Result<()> {
     let peripherals = Peripherals::take()?;
     let sysloop = EspSystemEventLoop::take()?;
 
-    let _wifi_connection = connect_to_wifi(
+    let wifi_connection = connect_to_wifi(
         app_config.wifi_ssid,
         app_config.wifi_psk,
         peripherals.modem,
         sysloop,
     )?;
+
+    if wifi_connection.is_connected()? {
+        indicator_led.set_led_color(indicator_led_config.wifi_connection)?;
+    }
 
     let client = MqttClient::new(app_config.mqtt_broker_address, app_config.mqtt_client_id)?;
 
@@ -79,6 +84,7 @@ fn main() -> Result<()> {
         app_config.mqtt_publish_topic,
         app_config.mqtt_subscribe_topic,
         indicator_led,
+        led_strip,
     );
 
     let controller_arc = Arc::new(message_controller);
