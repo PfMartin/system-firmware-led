@@ -6,7 +6,7 @@ use anyhow::{anyhow, Context, Error, Result};
 use embedded_svc::mqtt::client::QoS;
 use esp_idf_svc::mqtt::client::{
     EspMqttClient, EspMqttConnection,
-    EventPayload::{Connected, Error as EventError, Received},
+    EventPayload::{Connected, Disconnected, Received},
 };
 use log::{error, info};
 use serde::Deserialize;
@@ -106,11 +106,8 @@ impl MessageController {
                     thread_handles.push(publisher.start_publish_loop());
                     thread_handles.push(subscriber.subscribe());
                 }
-                EventError(e) => {
-                    error!("Error: {e}");
-                    let mut locked_client_mutex = self.client_mutex.lock().unwrap();
-                    locked_client_mutex.unsubscribe(&self.subscribe_topic)?;
-                    info!("Unsubscribed from topic '{}'", self.subscribe_topic);
+                Disconnected => {
+                    info!("Disconnected from message broker");
                     self.indicator_led
                         .set_led_color(self.indicator_led_config.wifi_connection)?;
                 }
@@ -118,13 +115,13 @@ impl MessageController {
             }
         }
 
+        info!("Connection closed");
+
         for handle in thread_handles {
             let _ = handle
                 .join()
                 .map_err(|e| anyhow!("Thread panicked: {:?}", e))?;
         }
-
-        info!("Connection closed");
 
         Ok(())
     }
