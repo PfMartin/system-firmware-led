@@ -1,5 +1,6 @@
 use anyhow::Result;
 use esp_idf_svc::mqtt::client::{EspMqttClient, EspMqttConnection, MqttClientConfiguration};
+
 pub struct MqttClient {
     pub client: EspMqttClient<'static>,
     pub connection: EspMqttConnection,
